@@ -1,12 +1,3 @@
-"""
-========================================================================
-  Sicurezza dell'Informazione M - Progetto Pratico
-  Titolo: Vulnerabilità DH e Difesa Challenge-Response con HMAC
-  Autore: [Inserire nome studente]
-  Data:   [Inserire data]
-========================================================================
-"""
-
 import time
 from config import P, G
 import scenario1_standard
