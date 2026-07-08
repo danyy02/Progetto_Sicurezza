@@ -1,4 +1,5 @@
 from config import P, G, genera_chiave_privata
+from monitoraggio_attacco import confronta_segreti
 from utils import separatore, passo
 
 def esegui() -> None:
@@ -58,6 +59,9 @@ def esegui() -> None:
     print(f"    Bob   crede che S = {hex(segreto_bob)[:18]}... (G^(ab) mod P)")
     print(f"    Eve   sa che S_BE = {hex(segreto_eve_lato_bob)[:18]}... ← UGUALE a Bob:   {bob_uguale_eve}")
 
+    print()
+    confronta_segreti(segreto_alice, segreto_bob)
+
     # --- Passo 5: Conclusione ---
     passo(5, "Analisi dell'attacco")
     print(f"    Segreto Alice-Eve (S_AE): {hex(segreto_alice)[:34]}...  ← Eve lo conosce ✅")
@@ -67,6 +71,7 @@ def esegui() -> None:
     print("       Alice e Bob pensano di condividere UNO stesso segreto,")
     print("       ma in realtà ne esistono DUE DISTINTI, entrambi noti ad Eve.")
     print("       Eve può decifrare, leggere e modificare ogni messaggio.")
+    print("       Il controllo di debug conferma la discrepanza tra i segreti.")
     print()
     print("    🔑 CAUSA RADICE: DH non offre alcuna autenticazione dell'identità.")
     print("       Non esiste modo per Alice di verificare che il valore ricevuto")

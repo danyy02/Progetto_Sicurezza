@@ -35,7 +35,8 @@ SIcurezza/
 ├── utils.py              # Funzioni di utilità console
 ├── scenario1_standard.py # Modulo: scambio in condizioni ideali
 ├── scenario2_mitm.py     # Modulo: simulazione intercettazione Eve
-├── scenario3_hmac.py     # Modulo: difesa Challenge-Response
+├── monitoraggio_attacco.py # Modulo: allarme debug sui segreti DH
+├── scenario3_hmac.py     # Modulo: difesa Challenge-Response + anti-replay
 ├── main.py               # Entry point per eseguire la simulazione
 └── README.md             
 ```
@@ -116,6 +117,8 @@ Risultato dei calcoli del segreto condiviso:
 
 Eve conosce **entrambi i segreti** separati. Ogni messaggio cifrato da Alice con il segreto `S_AE` viene decifrato da Eve, letto/modificato, ri-cifrato con il segreto `S_BE` e inoltrato a Bob. **La comunicazione sembra perfettamente funzionante per entrambe le vittime**, eppure Eve legge e controlla tutto il traffico.
 
+Per rendere la demo più evidente, in modalità debug viene anche confrontato direttamente il segreto che Alice e Bob credono di condividere: se non coincide, il programma stampa un warning esplicito del tipo `[ALLARME] I segreti non coincidono: possibile MitM`.
+
 ### Perché Eve riesce?
 
 Perché DH base non include **nessun binding** tra chiave pubblica e identità. Un valore `A` trasmesso sul canale è anonimo: chiunque può inviare un valore arbitrario spacciandolo per la chiave pubblica di un altro.
@@ -163,6 +166,10 @@ Quando Eve invia una firma calcolata con la propria chiave `PSK_Eve ≠ PSK`, Bo
 | Resistenza al MitM attivo | ❌ | ✅ |
 | Resistenza ai timing attacks | ❌ | ✅ (con `compare_digest`) |
 
+### Mini-scenario extra: replay attack esplicito
+
+Oltre al tentativo diretto di Eve, la demo mostra anche un caso di **replay**: Eve intercetta una firma HMAC valida e tenta di riusarla in una sessione successiva con lo stesso nonce. La verifica HMAC da sola risulta corretta, ma il controllo di freschezza sul nonce la blocca. Questo evidenzia che il nonce deve essere **casuale, fresco e monouso**.
+
 ---
 
 ---
@@ -170,6 +177,15 @@ Quando Eve invia una firma calcolata con la propria chiave `PSK_Eve ≠ PSK`, Bo
 ## 7. Come Eseguire il Progetto
 
 Il progetto richiede solo **Python 3.6+** e nessuna dipendenza esterna.
+
+Puoi lanciare l'intera demo oppure un singolo scenario alla volta:
+
+```bash
+python3 main.py      # esegue Scenario 1, 2 e 3 in sequenza
+python3 main.py 1    # esegue solo Scenario 1
+python3 main.py 2    # esegue solo Scenario 2
+python3 main.py 3    # esegue solo Scenario 3
+```
 
 ```bash
 # Clona o posizionati nella directory del progetto

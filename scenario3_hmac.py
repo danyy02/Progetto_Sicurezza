@@ -18,6 +18,8 @@ def esegui() -> None:
     print("    Nota: la PSK è stata scambiata su un canale sicuro fuori banda")
     print("    (es. in persona, o tramite un'infrastruttura PKI).")
 
+    nonce_usati = set()
+
     # ------------------------------------------------------------------
     # --- PARTE A: Autenticazione riuscita (Alice legittima) ---
     # ------------------------------------------------------------------
@@ -44,6 +46,7 @@ def esegui() -> None:
     print(f"    hmac.compare_digest   = {autenticazione_ok}")
 
     if autenticazione_ok:
+        nonce_usati.add(nonce)
         print("    ✅ AUTENTICAZIONE RIUSCITA: Alice ha dimostrato di conoscere PSK.")
         print("       Procedo con lo scambio Diffie-Hellman autenticato...\n")
 
@@ -103,6 +106,38 @@ def esegui() -> None:
     else:
         print("    ❌ ERRORE LOGICO: Eve non avrebbe dovuto superare la verifica.")
 
+    # ------------------------------------------------------------------
+    # --- PARTE C: Replay attack esplicito ------------------------------
+    # ------------------------------------------------------------------
+    print("\n\n  ── PARTE C: Replay attack esplicito ─────────────────────────")
+
+    passo(9, "Eve intercetta una firma valida e la conserva per un replay futuro")
+    nonce_replay = nonce
+    firma_replay = firma_alice
+    print(f"    Eve salva la coppia valida: nonce = {nonce_replay.hex()}")
+    print(f"    Firma HMAC catturata    = {firma_replay.hex()}")
+    print("    [EVE] tiene da parte la coppia per una sessione successiva")
+
+    passo(10, "Nella sessione successiva Bob riusa per errore lo stesso nonce")
+    print(f"    Bob riusa lo stesso nonce (hex) = {nonce_replay.hex()}")
+    print("    [RETE] Eve → Bob : reinvia la firma catturata in precedenza")
+
+    firma_attesa_replay = hmac.new(psk, nonce_replay, hashlib.sha256).digest()
+    verifica_replay = hmac.compare_digest(firma_replay, firma_attesa_replay)
+    nonce_fresco = nonce_replay not in nonce_usati
+    print(f"    Verifica HMAC            = {verifica_replay}")
+    print(f"    Nonce già visto          = {not nonce_fresco}")
+
+    if verifica_replay and not nonce_fresco:
+        print()
+        print("    [ALLARME] Replay rilevato: la firma è valida ma il nonce non è nuovo.")
+        print("       La protezione funziona solo se il nonce è casuale e monouso.")
+        print("       In caso contrario, una firma catturata può essere riusata.")
+    elif verifica_replay:
+        print("    ⚠️  La firma sarebbe valida, ma manca il controllo di freschezza.")
+    else:
+        print("    ❌ ERRORE LOGICO: il replay non avrebbe dovuto fallire sulla HMAC.")
+
     # --- Riepilogo finale ---
     print()
     print("  " + "─" * 60)
@@ -112,4 +147,5 @@ def esegui() -> None:
     print("    • hmac.compare_digest previene i timing attacks.")
     print("    • Lo scambio DH avviene DOPO la verifica dell'identità,")
     print("      rendendo il MitM impossibile anche in un canale ostile.")
+    print("    • Il nonce deve essere casuale, fresco e monouso per bloccare i replay.")
     print("  " + "─" * 60)
