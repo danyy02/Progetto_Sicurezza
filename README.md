@@ -187,14 +187,6 @@ python3 main.py 2    # esegue solo Scenario 2
 python3 main.py 3    # esegue solo Scenario 3
 ```
 
-```bash
-# Clona o posizionati nella directory del progetto
 
-
-# Esegui la simulazione
-python3 main.py
-```
-
-L'output mostra i tre scenari in sequenza, con ogni passo numerato e commentato.
 
 
