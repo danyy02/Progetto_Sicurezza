@@ -1,18 +1,4 @@
 """
-eve.py — Processo Eve: proxy TCP Man-in-the-Middle reale.
-
-Topologia di rete:
-
-    Alice ──[TCP]──▶ EVE_PORT:9001 ──[TCP]──▶ BOB_PORT:9000 ──▶ Bob
-
-Eve si comporta come un nodo di rete "malevolo" tra Alice e Bob:
-  • Ascolta su EVE_PORT (9001): Alice si connette qui credendo sia Bob.
-  • Si connette a Bob su BOB_PORT (9000): Bob crede che sia Alice.
-  • Sostituisce le chiavi pubbliche DH con le proprie.
-  • Stabilisce due sessioni DH separate: Alice↔Eve e Eve↔Bob.
-  • Conosce ENTRAMBI i segreti → può leggere/modificare ogni messaggio.
-  • Alice e Bob non rilevano nulla di anomalo.
-
 Uso:
     python3 eve.py
 """

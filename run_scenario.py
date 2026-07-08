@@ -1,12 +1,3 @@
-"""
-Uso:
-    python3 run_scenario.py --scenario 1   # DH standard: Alice ↔ Bob
-    python3 run_scenario.py --scenario 2   # MitM reale:  Alice ↔ Eve ↔ Bob
-    python3 run_scenario.py --scenario 3   # HMAC+DH:     Alice ↔ Bob (difeso)
-    python3 run_scenario.py --scenario 3 --psk-sbagliata  # Eve tenta l'auth
-    python3 run_scenario.py                # Tutti e tre in sequenza
-"""
-
 import argparse
 import subprocess
 import sys

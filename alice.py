@@ -1,13 +1,4 @@
 """
-alice.py — Processo Alice: client TCP.
-
-Scenario 1 : Alice si connette DIRETTAMENTE a Bob  (porta 9000).
-Scenario 2 : Alice si connette a EVE               (porta 9001).
-             Dal punto di vista di Alice il protocollo è identico —
-             è esattamente la forza dell'attacco MitM.
-Scenario 3 : Alice si connette a Bob               (porta 9002),
-             autentica tramite HMAC-SHA256, poi esegue il DH.
-
 Uso:
     python3 alice.py --scenario 1   # oppure 2 o 3
     python3 alice.py --scenario 3 --psk-sbagliata
