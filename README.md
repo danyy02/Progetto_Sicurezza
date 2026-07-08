@@ -1,6 +1,6 @@
 # Diffie-Hellman: Vulnerabilità MitM e Difesa Challenge-Response
 **Corso:** Sicurezza dell'Informazione M  
-**Progetto:** Implementazione pratica e simulazione in Python 3  
+**Progetto:** Implementazione pratica con comunicazione TCP reale — Python 3
 
 ---
 
@@ -17,13 +17,15 @@
 
 ## 1. Descrizione del Progetto
 
-Questo progetto dimostra in modo pratico:
+Questo progetto dimostra in modo pratico e concreto:
 
-- Il funzionamento corretto del protocollo **Diffie-Hellman** per lo scambio di chiavi (Scenario 1).
-- La sua **vulnerabilità intrinseca agli attacchi attivi** (Man-in-the-Middle, Scenario 2).
-- Come un meccanismo di **autenticazione Challenge-Response basato su HMAC-SHA256** risolve la vulnerabilità, garantendo l'identità delle parti prima che lo scambio delle chiavi abbia luogo (Scenario 3).
+- Il funzionamento corretto del protocollo **Diffie-Hellman** per lo scambio di chiavi (**Scenario 1**).
+- La sua **vulnerabilità intrinseca agli attacchi attivi** — Man-in-the-Middle (**Scenario 2**).
+- Come un meccanismo di **autenticazione Challenge-Response basato su HMAC-SHA256** risolve la vulnerabilità, garantendo l'identità delle parti *prima* che lo scambio delle chiavi abbia luogo (**Scenario 3**).
 
-Il codice è scritto interamente con la libreria standard di Python 3 (`hmac`, `hashlib`, `os`), senza dipendenze esterne.
+A differenza di molte demo in cui tutti i "processi" sono funzioni nello stesso script, qui **Alice, Bob ed Eve girano come processi Python separati** che comunicano tramite **socket TCP reali su localhost**. Eve è un vero proxy che intercetta i byte sulla rete — non una simulazione logica in-memory. Questo rende l'attacco MitM tangibile e dimostrabile in modo inequivocabile.
+
+Il codice utilizza esclusivamente la **libreria standard di Python 3** (`socket`, `hmac`, `hashlib`, `os`, `subprocess`), senza dipendenze esterne.
 
 ---
 
@@ -31,28 +33,51 @@ Il codice è scritto interamente con la libreria standard di Python 3 (`hmac`, `
 
 ```
 SIcurezza/
-├── config.py             # Parametri DH (P, G) e gen. chiavi
-├── utils.py              # Funzioni di utilità console
-├── scenario1_standard.py # Modulo: scambio in condizioni ideali
-├── scenario2_mitm.py     # Modulo: simulazione intercettazione Eve
-├── monitoraggio_attacco.py # Modulo: allarme debug sui segreti DH
-├── scenario3_hmac.py     # Modulo: difesa Challenge-Response + anti-replay
-├── main.py               # Entry point per eseguire la simulazione
-└── README.md             
+├── common.py          # Parametri DH (RFC 3526), framing TCP, logging colorato
+├── alice.py           # Processo Alice — client TCP
+├── bob.py             # Processo Bob   — server TCP
+├── eve.py             # Processo Eve   — proxy MitM (intercetta Alice → Bob)
+├── run_scenario.py    # Orchestratore: lancia i processi e mostra l'output
+└── README.md
+```
+
+### Topologia di rete
+
+```
+Scenario 1 (DH standard):
+  Alice ──TCP:9000──▶ Bob
+
+Scenario 2 (MitM reale):
+  Alice ──TCP:9001──▶ Eve ──TCP:9000──▶ Bob
+         (crede sia Bob)  (proxy trasparente)
+
+Scenario 3 (HMAC + DH):
+  Alice ──TCP:9002──▶ Bob   [challenge-response prima del DH]
+```
+
+### Protocollo di messaggistica TCP
+
+TCP è un protocollo a flusso di byte: non ha un concetto nativo di "messaggio". Ogni pacchetto è delimitato con un **header a 4 byte** (lunghezza big-endian) seguito da un payload JSON UTF-8:
+
+```
+┌──────────────────────────────┬───────────────────────────────────────┐
+│  4 byte (lunghezza, BE uint) │  payload JSON  (N byte)               │
+└──────────────────────────────┴───────────────────────────────────────┘
 ```
 
 ---
 
 ## 3. Fondamenti: il Protocollo Diffie-Hellman
 
-Il protocollo **Diffie-Hellman** (DH, 1976) permette a due parti — convenzionalmente chiamate **Alice** e **Bob** — di concordare un **segreto condiviso** attraverso un canale di comunicazione pubblico (e quindi intercettabile), senza che tale segreto venga mai trasmesso esplicitamente.
+Il protocollo **Diffie-Hellman** (DH, 1976) permette a due parti — Alice e Bob — di concordare un **segreto condiviso** attraverso un canale pubblico, senza trasmettere mai il segreto stesso.
 
 ### Parametri pubblici (noti a tutti)
 | Simbolo | Valore | Standard |
 |---------|--------|----------|
-| `G` | `2` | Generatore MODP comune a tutti i gruppi RFC 3526 |
+| `G` | `2` | Generatore comune a tutti i gruppi MODP RFC 3526 |
 | `P` | Primo sicuro a **2048 bit** | RFC 3526 Section 3 — MODP Group 14 |
 
+Le chiavi private vengono generate con `os.urandom(32)` (256 bit di entropia dal CSPRNG del sistema operativo), nel range `[2, P-2]`.
 
 ### Protocollo (Scenario 1)
 
@@ -60,8 +85,8 @@ Il protocollo **Diffie-Hellman** (DH, 1976) permette a due parti — convenziona
 Alice                              Bob
 ──────                             ───
 Sceglie a (privata)                Sceglie b (privata)
-A = G^a mod P    ──── A ────>      B = G^b mod P
-                 <─── B ────
+A = G^a mod P    ──── A ────▶      B = G^b mod P
+                 ◀─── B ────
 s = B^a mod P                      s = A^b mod P
 ```
 
@@ -72,7 +97,7 @@ B^a mod P = (G^b)^a mod P = G^(ab) mod P
 A^b mod P = (G^a)^b mod P = G^(ab) mod P
 ```
 
-Entrambi ottengono `s = G^(ab) mod P` senza che `a`, `b` o `s` siano stati trasmessi. La sicurezza si basa sulla difficoltà computazionale del **Problema del Logaritmo Discreto** (DLP): dato `A = G^a mod P`, ricavare `a` è computazionalmente intrattabile per valori di `P` sufficientemente grandi.
+Entrambi ottengono `S = G^(ab) mod P` senza che `a`, `b` o `S` siano mai stati trasmessi. La sicurezza si basa sulla difficoltà computazionale del **Problema del Logaritmo Discreto** (DLP).
 
 ---
 
@@ -90,38 +115,37 @@ Questa mancanza apre la porta a qualunque **avversario attivo** capace di interc
 
 ### Modello dell'attaccante
 
-Eve è un **avversario attivo** (Dolev-Yao model): può intercettare, bloccare, modificare e iniettare messaggi sul canale tra Alice e Bob.
+Eve è un **avversario attivo** (modello Dolev-Yao): può intercettare, bloccare, modificare e iniettare messaggi sul canale tra Alice e Bob.  
+In questa implementazione, Eve è un **processo reale** che si siede fisicamente tra Alice e Bob a livello TCP.
 
 ### Come funziona l'attacco
 
-Eve genera **due coppie di chiavi DH proprie**, una per ciascun lato:
+Eve genera due coppie di chiavi DH proprie, una per ciascun lato, e sostituisce le chiavi pubbliche che transitano sulla rete:
 
 ```
-Alice                  Eve (MitM)                  Bob
-──────                 ──────────                  ────
-a (privata)            e1 (privata)  e2 (privata)   b (privata)
-A = G^a mod P          E_A = G^e1    E_B = G^e2     B = G^b mod P
+Alice               Eve (proxy TCP)              Bob
+──────              ───────────────              ───
+a (privata)         e1 (priv.)  e2 (priv.)       b (privata)
+A = G^a mod P       E1=G^e1     E2=G^e2          B = G^b mod P
 
-   ── A ──>  [intercetta A, invia E_B]  ──>
-             [intercetta B, invia E_A]  <── B ──
+  ──── A ────▶  ✗ [Eve intercetta A, invia E1]  ────▶
+               ✗ [Eve intercetta B, invia E2]  ◀──── B ────
 ```
 
-Risultato dei calcoli del segreto condiviso:
+Risultato dei segreti calcolati:
 
 | Parte | Calcola | Crede di parlare con |
 |-------|---------|----------------------|
-| Alice | `E_B^a mod P = G^(e2·a)` | Bob |
+| Alice | `E2^a mod P = G^(e2·a)` | Bob |
 | Eve   | `A^e2 mod P = G^(a·e2)` ✓ | Alice |
-| Bob   | `E_A^b mod P = G^(e1·b)` | Alice |
+| Bob   | `E1^b mod P = G^(e1·b)` | Alice |
 | Eve   | `B^e1 mod P = G^(b·e1)` ✓ | Bob |
 
-Eve conosce **entrambi i segreti** separati. Ogni messaggio cifrato da Alice con il segreto `S_AE` viene decifrato da Eve, letto/modificato, ri-cifrato con il segreto `S_BE` e inoltrato a Bob. **La comunicazione sembra perfettamente funzionante per entrambe le vittime**, eppure Eve legge e controlla tutto il traffico.
-
-Per rendere la demo più evidente, in modalità debug viene anche confrontato direttamente il segreto che Alice e Bob credono di condividere: se non coincide, il programma stampa un warning esplicito del tipo `[ALLARME] I segreti non coincidono: possibile MitM`.
+Eve conosce **entrambi i segreti** separati. Ogni messaggio cifrato da Alice viene decifrato da Eve, potenzialmente modificato, ri-cifrato con l'altro segreto e inoltrato a Bob. La comunicazione sembra perfettamente funzionante per entrambe le vittime.
 
 ### Perché Eve riesce?
 
-Perché DH base non include **nessun binding** tra chiave pubblica e identità. Un valore `A` trasmesso sul canale è anonimo: chiunque può inviare un valore arbitrario spacciandolo per la chiave pubblica di un altro.
+Perché DH base non include alcun **binding** tra chiave pubblica e identità. Un valore `A` trasmesso sul canale è anonimo: chiunque può sostituirlo con un proprio valore arbitrario senza che nessuno se ne accorga.
 
 ---
 
@@ -129,33 +153,27 @@ Perché DH base non include **nessun binding** tra chiave pubblica e identità. 
 
 ### Soluzione: autenticazione prima dello scambio
 
-L'idea è semplice e potente: **verificare l'identità di Alice prima che lo scambio DH abbia luogo**. A tale scopo si usa una **chiave segreta pre-condivisa (Pre-Shared Key, PSK)**, che Alice e Bob hanno concordato su un canale sicuro fuori banda (out-of-band).
+L'idea è **verificare l'identità di Alice prima che lo scambio DH abbia luogo**. A tale scopo si usa una **chiave segreta pre-condivisa (PSK)**, concordata su un canale sicuro fuori banda.
 
 ### Il protocollo Challenge-Response
 
 ```
 Bob                                        Alice
 ────                                       ──────
-Genera nonce = os.urandom(16)
-               ────── nonce ──────>
+nonce = os.urandom(16)
+           ──────── nonce ────────▶
                                            firma = HMAC-SHA256(PSK, nonce)
-               <───── firma ──────
-Verifica: HMAC-SHA256(PSK, nonce) == firma?
-Se OK → procede con DH autenticato.
-Se NO → blocca la connessione.
+           ◀─────── firma ────────
+verifica: HMAC-SHA256(PSK, nonce) == firma ?
+  OK  → procede con DH autenticato
+  NO  → blocca immediatamente la connessione
 ```
 
 ### Perché Eve fallisce nello Scenario 3
 
-Eve può intercettare il `nonce` (è trasmesso in chiaro e può essere pubblico). Tuttavia, per calcolare una firma valida, Eve deve calcolare:
+Eve può intercettare il `nonce` (è trasmesso in chiaro). Tuttavia, per calcolare una firma valida deve calcolare `HMAC-SHA256(PSK, nonce)` senza conoscere `PSK` — **computazionalmente impossibile**. HMAC-SHA256 è una funzione pseudo-random: l'output è indistinguibile da un valore casuale senza la chiave.
 
-```
-HMAC-SHA256(PSK, nonce)
-```
-
-**Senza conoscere `PSK`, questo è computazionalmente impossibile.** HMAC-SHA256 è una funzione pseudo-random: dato un nonce e una chiave sconosciuta, l'output è indistinguibile da un valore casuale. Eve non può né dedurre la chiave dall'output, né produrre una firma valida con una chiave diversa.
-
-Quando Eve invia una firma calcolata con la propria chiave `PSK_Eve ≠ PSK`, Bob la confronta con `HMAC-SHA256(PSK, nonce)` e i due valori **non corrispondono** → la sessione viene immediatamente terminata, **prima che qualsiasi scambio DH avvenga**.
+Quando Eve invia una firma calcolata con la propria chiave (`PSK_Eve ≠ PSK`), Bob la confronta con `HMAC-SHA256(PSK, nonce)` tramite **`hmac.compare_digest`** (confronto timing-safe, resistente ai timing attack) e i due valori non corrispondono → sessione rifiutata prima che qualsiasi DH avvenga.
 
 ### Proprietà di sicurezza garantite
 
@@ -164,29 +182,31 @@ Quando Eve invia una firma calcolata con la propria chiave `PSK_Eve ≠ PSK`, Bo
 | Riservatezza | ✅ | ✅ |
 | Autenticazione dell'origine | ❌ | ✅ |
 | Resistenza al MitM attivo | ❌ | ✅ |
-| Resistenza ai timing attacks | ❌ | ✅ (con `compare_digest`) |
-
-### Mini-scenario extra: replay attack esplicito
-
-Oltre al tentativo diretto di Eve, la demo mostra anche un caso di **replay**: Eve intercetta una firma HMAC valida e tenta di riusarla in una sessione successiva con lo stesso nonce. La verifica HMAC da sola risulta corretta, ma il controllo di freschezza sul nonce la blocca. Questo evidenzia che il nonce deve essere **casuale, fresco e monouso**.
-
----
+| Resistenza ai timing attack | ❌ | ✅ (con `compare_digest`) |
 
 ---
 
 ## 7. Come Eseguire il Progetto
 
-Il progetto richiede solo **Python 3.6+** e nessuna dipendenza esterna.
-
-Puoi lanciare l'intera demo oppure un singolo scenario alla volta:
+Il progetto richiede solo **Python 3.10+** e nessuna dipendenza esterna.
 
 ```bash
-python3 main.py      # esegue Scenario 1, 2 e 3 in sequenza
-python3 main.py 1    # esegue solo Scenario 1
-python3 main.py 2    # esegue solo Scenario 2
-python3 main.py 3    # esegue solo Scenario 3
+cd SIcurezza/
+
+# Scenario 1 — DH standard (canale pulito)
+python3 run_scenario.py --scenario 1
+
+# Scenario 2 — MitM reale (Alice si connette a Eve credendo sia Bob)
+python3 run_scenario.py --scenario 2
+
+# Scenario 3a — HMAC + DH (Alice legittima, sessione sicura stabilita)
+python3 run_scenario.py --scenario 3
+
+# Scenario 3b — HMAC + DH (Eve tenta con PSK sbagliata → bloccata)
+python3 run_scenario.py --scenario 3 --psk-sbagliata
+
+# Demo completa: tutti e quattro gli scenari in sequenza
+python3 run_scenario.py
 ```
-
-
 
 
