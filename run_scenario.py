@@ -46,10 +46,7 @@ def _riepilogo(titolo: str, righe: list[str]) -> None:
 
 
 def _leggi_output(proc: subprocess.Popen, *_) -> None:
-    """Thread: relaya stdout del sottoprocesso as-is.
-    log() nel sottoprocesso stampa già il prefisso colorato [Ruolo] —
-    aggiungerne un altro qui produrrebbe nomi doppi.
-    """
+ 
     for linea in proc.stdout:
         print(linea.rstrip("\n"), flush=True)
 
